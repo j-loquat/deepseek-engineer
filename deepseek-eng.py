@@ -1,7 +1,14 @@
-#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "prompt_toolkit",
+#     "openai",
+#     "rich",
+#     "pydantic"
+# ]
+# ///
 
 import os
-import sys
 import json
 from pathlib import Path
 from textwrap import dedent
@@ -30,8 +37,8 @@ prompt_session = PromptSession(
 # 1. Configure OpenAI client
 
 API_KEY = "your_api_key_here"
-BASE_URL = "https://api.deepseek.com"
-MODEL = "deepseek-reasoner"
+BASE_URL = "https://llm.chutes.ai/v1/"
+MODEL = "deepseek-ai/DeepSeek-R1-0528"
 
 client = OpenAI(
     api_key=API_KEY,
