@@ -53,114 +53,99 @@ class FileToEdit(BaseModel):
 # Remove AssistantResponse as we're using function calling now
 
 # --------------------------------------------------------------------------------
-# 2.1. Define Function Calling Tools
+# 2.1. Define Function Calling Schemas
 # --------------------------------------------------------------------------------
-tools = [
+functions = [
     {
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": "Read the content of a single file from the filesystem",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "The path to the file to read (relative or absolute)",
-                    }
-                },
-                "required": ["file_path"]
+        "name": "read_file",
+        "description": "Read the content of a single file from the filesystem",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "The path to the file to read (relative or absolute)",
+                }
             },
-        }
+            "required": ["file_path"]
+        },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "read_multiple_files",
-            "description": "Read the content of multiple files from the filesystem",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_paths": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Array of file paths to read (relative or absolute)",
-                    }
-                },
-                "required": ["file_paths"]
+        "name": "read_multiple_files",
+        "description": "Read the content of multiple files from the filesystem",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Array of file paths to read (relative or absolute)",
+                }
             },
-        }
+            "required": ["file_paths"]
+        },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "create_file",
-            "description": "Create a new file or overwrite an existing file with the provided content",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "The path where the file should be created",
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "The content to write to the file",
-                    }
+        "name": "create_file",
+        "description": "Create a new file or overwrite an existing file with the provided content",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "The path where the file should be created",
                 },
-                "required": ["file_path", "content"]
+                "content": {
+                    "type": "string",
+                    "description": "The content to write to the file",
+                }
             },
-        }
+            "required": ["file_path", "content"]
+        },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "create_multiple_files",
-            "description": "Create multiple files at once",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "files": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "path": {"type": "string"},
-                                "content": {"type": "string"}
-                            },
-                            "required": ["path", "content"]
+        "name": "create_multiple_files",
+        "description": "Create multiple files at once",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string"},
+                            "content": {"type": "string"}
                         },
-                        "description": "Array of files to create with their paths and content",
-                    }
-                },
-                "required": ["files"]
+                        "required": ["path", "content"]
+                    },
+                    "description": "Array of files to create with their paths and content",
+                }
             },
-        }
+            "required": ["files"]
+        },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "edit_file",
-            "description": "Edit an existing file by replacing a specific snippet with new content",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "The path to the file to edit",
-                    },
-                    "original_snippet": {
-                        "type": "string",
-                        "description": "The exact text snippet to find and replace",
-                    },
-                    "new_snippet": {
-                        "type": "string",
-                        "description": "The new text to replace the original snippet with",
-                    }
+        "name": "edit_file",
+        "description": "Edit an existing file by replacing a specific snippet with new content",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "The path to the file to edit",
                 },
-                "required": ["file_path", "original_snippet", "new_snippet"]
+                "original_snippet": {
+                    "type": "string",
+                    "description": "The exact text snippet to find and replace",
+                },
+                "new_snippet": {
+                    "type": "string",
+                    "description": "The new text to replace the original snippet with",
+                }
             },
-        }
+            "required": ["file_path", "original_snippet", "new_snippet"]
+        },
     }
 ]
 
@@ -590,7 +575,8 @@ def stream_openai_response(user_message: str):
         stream = client.chat.completions.create(
             model=MODEL,
             messages=conversation_history,
-            tools=tools,
+            functions=functions,
+            function_call="auto",
             max_completion_tokens=64000,
             stream=True
         )
@@ -616,18 +602,18 @@ def stream_openai_response(user_message: str):
                     reasoning_started = False
                 final_content += chunk.choices[0].delta.content
                 console.print(chunk.choices[0].delta.content, end="")
-            elif chunk.choices[0].delta.tool_calls:
-                # Handle tool calls
+            elif hasattr(chunk.choices[0].delta, "tool_calls") and chunk.choices[0].delta.tool_calls:
+                # Handle tool calls (multiple)
                 for tool_call_delta in chunk.choices[0].delta.tool_calls:
                     if tool_call_delta.index is not None:
-                        # Ensure we have enough tool_calls
+                        # Ensure we have enough tool_calls stored
                         while len(tool_calls) <= tool_call_delta.index:
                             tool_calls.append({
                                 "id": "",
                                 "type": "function",
                                 "function": {"name": "", "arguments": ""}
                             })
-                        
+
                         if tool_call_delta.id:
                             tool_calls[tool_call_delta.index]["id"] = tool_call_delta.id
                         if tool_call_delta.function:
@@ -635,6 +621,19 @@ def stream_openai_response(user_message: str):
                                 tool_calls[tool_call_delta.index]["function"]["name"] += tool_call_delta.function.name
                             if tool_call_delta.function.arguments:
                                 tool_calls[tool_call_delta.index]["function"]["arguments"] += tool_call_delta.function.arguments
+            elif hasattr(chunk.choices[0].delta, "function_call") and chunk.choices[0].delta.function_call:
+                # Handle single function_call field
+                fc = chunk.choices[0].delta.function_call
+                if not tool_calls:
+                    tool_calls.append({
+                        "id": "",
+                        "type": "function",
+                        "function": {"name": "", "arguments": ""}
+                    })
+                if fc.name:
+                    tool_calls[0]["function"]["name"] += fc.name
+                if fc.arguments:
+                    tool_calls[0]["function"]["arguments"] += fc.arguments
 
         console.print()  # New line after streaming
 
@@ -699,7 +698,8 @@ def stream_openai_response(user_message: str):
                 follow_up_stream = client.chat.completions.create(
                     model=MODEL,
                     messages=conversation_history,
-                    tools=tools,
+                    functions=functions,
+                    function_call="auto",
                     max_completion_tokens=64000,
                     stream=True
                 )
