@@ -1,7 +1,14 @@
-#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "prompt_toolkit",
+#     "openai",
+#     "rich",
+#     "pydantic"
+# ]
+# ///
 
 import os
-import sys
 import json
 from pathlib import Path
 from textwrap import dedent
@@ -30,8 +37,8 @@ prompt_session = PromptSession(
 # 1. Configure OpenAI client
 
 API_KEY = "your_api_key_here"
-BASE_URL = "https://api.deepseek.com"
-MODEL = "deepseek-reasoner"
+BASE_URL = "https://llm.chutes.ai/v1/"
+MODEL = "deepseek-ai/DeepSeek-R1-0528"
 
 client = OpenAI(
     api_key=API_KEY,
@@ -55,110 +62,90 @@ class FileToEdit(BaseModel):
 # --------------------------------------------------------------------------------
 # 2.1. Define Tool Calling Schemas
 # --------------------------------------------------------------------------------
-tools = [
+functions = [
     {
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": "Read the content of a single file from the filesystem",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "The path to the file to read (relative or absolute)",
-                    }
-                },
-                "required": ["file_path"]
+        "name": "read_file",
+        "description": "Read the content of a single file from the filesystem",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "The path to the file to read (relative or absolute)",
+                }
             },
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "read_multiple_files",
-            "description": "Read the content of multiple files from the filesystem",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_paths": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Array of file paths to read (relative or absolute)",
-                    }
-                },
-                "required": ["file_paths"]
+        "name": "read_multiple_files",
+        "description": "Read the content of multiple files from the filesystem",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Array of file paths to read (relative or absolute)",
+                }
             },
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "create_file",
-            "description": "Create a new file or overwrite an existing file with the provided content",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "The path where the file should be created",
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "The content to write to the file",
-                    }
+        "name": "create_file",
+        "description": "Create a new file or overwrite an existing file with the provided content",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "The path where the file should be created",
                 },
-                "required": ["file_path", "content"]
+                "content": {
+                    "type": "string",
+                    "description": "The content to write to the file",
+                }
             },
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "create_multiple_files",
-            "description": "Create multiple files at once",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "files": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "path": {"type": "string"},
-                                "content": {"type": "string"}
-                            },
-                            "required": ["path", "content"]
+        "name": "create_multiple_files",
+        "description": "Create multiple files at once",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string"},
+                            "content": {"type": "string"}
                         },
-                        "description": "Array of files to create with their paths and content",
-                    }
-                },
-                "required": ["files"]
+                        "required": ["path", "content"]
+                    },
+                    "description": "Array of files to create with their paths and content",
+                }
             },
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "edit_file",
-            "description": "Edit an existing file by replacing a specific snippet with new content",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "The path to the file to edit",
-                    },
-                    "original_snippet": {
-                        "type": "string",
-                        "description": "The exact text snippet to find and replace",
-                    },
-                    "new_snippet": {
-                        "type": "string",
-                        "description": "The new text to replace the original snippet with",
-                    }
+        "name": "edit_file",
+        "description": "Edit an existing file by replacing a specific snippet with new content",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "The path to the file to edit",
                 },
-                "required": ["file_path", "original_snippet", "new_snippet"]
+                "original_snippet": {
+                    "type": "string",
+                    "description": "The exact text snippet to find and replace",
+                },
+                "new_snippet": {
+                    "type": "string",
+                    "description": "The new text to replace the original snippet with",
+                }
             },
         },
     }
