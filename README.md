@@ -102,7 +102,6 @@ For when you want to preload files into conversation context:
 
    #### Using uv (recommended - faster)
    ```bash
-   uv venv
    uv run deepseek-eng.py
    ```
 
