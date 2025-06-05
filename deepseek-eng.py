@@ -53,98 +53,113 @@ class FileToEdit(BaseModel):
 # Remove AssistantResponse as we're using function calling now
 
 # --------------------------------------------------------------------------------
-# 2.1. Define Function Calling Schemas
+# 2.1. Define Tool Calling Schemas
 # --------------------------------------------------------------------------------
-functions = [
+tools = [
     {
-        "name": "read_file",
-        "description": "Read the content of a single file from the filesystem",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "file_path": {
-                    "type": "string",
-                    "description": "The path to the file to read (relative or absolute)",
-                }
-            },
-            "required": ["file_path"]
-        },
-    },
-    {
-        "name": "read_multiple_files",
-        "description": "Read the content of multiple files from the filesystem",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "file_paths": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Array of file paths to read (relative or absolute)",
-                }
-            },
-            "required": ["file_paths"]
-        },
-    },
-    {
-        "name": "create_file",
-        "description": "Create a new file or overwrite an existing file with the provided content",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "file_path": {
-                    "type": "string",
-                    "description": "The path where the file should be created",
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read the content of a single file from the filesystem",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "The path to the file to read (relative or absolute)",
+                    }
                 },
-                "content": {
-                    "type": "string",
-                    "description": "The content to write to the file",
-                }
+                "required": ["file_path"]
             },
-            "required": ["file_path", "content"]
         },
     },
     {
-        "name": "create_multiple_files",
-        "description": "Create multiple files at once",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "files": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string"},
-                            "content": {"type": "string"}
-                        },
-                        "required": ["path", "content"]
+        "type": "function",
+        "function": {
+            "name": "read_multiple_files",
+            "description": "Read the content of multiple files from the filesystem",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Array of file paths to read (relative or absolute)",
+                    }
+                },
+                "required": ["file_paths"]
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_file",
+            "description": "Create a new file or overwrite an existing file with the provided content",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "The path where the file should be created",
                     },
-                    "description": "Array of files to create with their paths and content",
-                }
+                    "content": {
+                        "type": "string",
+                        "description": "The content to write to the file",
+                    }
+                },
+                "required": ["file_path", "content"]
             },
-            "required": ["files"]
         },
     },
     {
-        "name": "edit_file",
-        "description": "Edit an existing file by replacing a specific snippet with new content",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "file_path": {
-                    "type": "string",
-                    "description": "The path to the file to edit",
+        "type": "function",
+        "function": {
+            "name": "create_multiple_files",
+            "description": "Create multiple files at once",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "files": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                                "content": {"type": "string"}
+                            },
+                            "required": ["path", "content"]
+                        },
+                        "description": "Array of files to create with their paths and content",
+                    }
                 },
-                "original_snippet": {
-                    "type": "string",
-                    "description": "The exact text snippet to find and replace",
-                },
-                "new_snippet": {
-                    "type": "string",
-                    "description": "The new text to replace the original snippet with",
-                }
+                "required": ["files"]
             },
-            "required": ["file_path", "original_snippet", "new_snippet"]
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_file",
+            "description": "Edit an existing file by replacing a specific snippet with new content",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "The path to the file to edit",
+                    },
+                    "original_snippet": {
+                        "type": "string",
+                        "description": "The exact text snippet to find and replace",
+                    },
+                    "new_snippet": {
+                        "type": "string",
+                        "description": "The new text to replace the original snippet with",
+                    }
+                },
+                "required": ["file_path", "original_snippet", "new_snippet"]
+            },
         },
     }
 ]
@@ -575,9 +590,9 @@ def stream_openai_response(user_message: str):
         stream = client.chat.completions.create(
             model=MODEL,
             messages=conversation_history,
-            functions=functions,
-            function_call="auto",
-            max_completion_tokens=64000,
+            tools=tools,
+            tool_choice="auto",
+            max_tokens=64000,
             stream=True
         )
 
@@ -698,9 +713,9 @@ def stream_openai_response(user_message: str):
                 follow_up_stream = client.chat.completions.create(
                     model=MODEL,
                     messages=conversation_history,
-                    functions=functions,
-                    function_call="auto",
-                    max_completion_tokens=64000,
+                    tools=tools,
+                    tool_choice="auto",
+                    max_tokens=64000,
                     stream=True
                 )
                 
