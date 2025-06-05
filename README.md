@@ -94,7 +94,7 @@ For when you want to preload files into conversation context:
    constants at the top of the file. Example:
    ```python
    API_KEY = "my api key"
-   BASE_URL = "https://llm.chutes.ai/v1/chat/completions"
+   BASE_URL = "https://llm.chutes.ai/v1/"
    MODEL = "deepseek-ai/DeepSeek-R1-0528"
    ```
 
