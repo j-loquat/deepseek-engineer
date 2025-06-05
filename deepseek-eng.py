@@ -60,7 +60,7 @@ class FileToEdit(BaseModel):
 # Remove AssistantResponse as we're using function calling now
 
 # --------------------------------------------------------------------------------
-# 2.1. Define Function Calling Schemas
+# 2.1. Define Tool Calling Schemas
 # --------------------------------------------------------------------------------
 functions = [
     {
@@ -74,7 +74,6 @@ functions = [
                     "description": "The path to the file to read (relative or absolute)",
                 }
             },
-            "required": ["file_path"]
         },
     },
     {
@@ -89,7 +88,6 @@ functions = [
                     "description": "Array of file paths to read (relative or absolute)",
                 }
             },
-            "required": ["file_paths"]
         },
     },
     {
@@ -107,7 +105,6 @@ functions = [
                     "description": "The content to write to the file",
                 }
             },
-            "required": ["file_path", "content"]
         },
     },
     {
@@ -129,7 +126,6 @@ functions = [
                     "description": "Array of files to create with their paths and content",
                 }
             },
-            "required": ["files"]
         },
     },
     {
@@ -151,7 +147,6 @@ functions = [
                     "description": "The new text to replace the original snippet with",
                 }
             },
-            "required": ["file_path", "original_snippet", "new_snippet"]
         },
     }
 ]
@@ -582,9 +577,9 @@ def stream_openai_response(user_message: str):
         stream = client.chat.completions.create(
             model=MODEL,
             messages=conversation_history,
-            functions=functions,
-            function_call="auto",
-            max_completion_tokens=64000,
+            tools=tools,
+            tool_choice="auto",
+            max_tokens=64000,
             stream=True
         )
 
@@ -705,9 +700,9 @@ def stream_openai_response(user_message: str):
                 follow_up_stream = client.chat.completions.create(
                     model=MODEL,
                     messages=conversation_history,
-                    functions=functions,
-                    function_call="auto",
-                    max_completion_tokens=64000,
+                    tools=tools,
+                    tool_choice="auto",
+                    max_tokens=64000,
                     stream=True
                 )
                 
