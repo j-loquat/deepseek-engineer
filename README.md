@@ -89,10 +89,13 @@ For when you want to preload files into conversation context:
    cd deepseek-engineer
    ```
 
-2. **Set up environment**:
-   ```bash
-   # Create .env file
-   echo "DEEPSEEK_API_KEY=your_api_key_here" > .env
+2. **Configure API credentials**:
+   Open `deepseek-eng.py` and set the `API_KEY`, `BASE_URL`, and `MODEL`
+   constants at the top of the file. Example:
+   ```python
+   API_KEY = "my api key"
+   BASE_URL = "https://llm.chutes.ai/v1/chat/completions"
+   MODEL = "deepseek-ai/DeepSeek-R1-0528"
    ```
 
 3. **Install dependencies** (choose one method):
@@ -224,10 +227,9 @@ Based on my analysis of your project, here's a comprehensive refactoring plan...
 
 ### **Common Issues**
 
-**API Key Not Found**
+**API Key Not Set**
 ```bash
-# Make sure .env file exists with your API key
-echo "DEEPSEEK_API_KEY=your_key_here" > .env
+# Edit deepseek-eng.py and set the API_KEY constant with your key
 ```
 
 **Import Errors**
