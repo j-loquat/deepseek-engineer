@@ -8,7 +8,6 @@ from textwrap import dedent
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from pydantic import BaseModel
-from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -28,13 +27,16 @@ prompt_session = PromptSession(
 )
 
 # --------------------------------------------------------------------------------
-# 1. Configure OpenAI client and load environment variables
-# --------------------------------------------------------------------------------
-load_dotenv()  # Load environment variables from .env file
+# 1. Configure OpenAI client
+
+API_KEY = "your_api_key_here"
+BASE_URL = "https://api.deepseek.com"
+MODEL = "deepseek-reasoner"
+
 client = OpenAI(
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
-    base_url="https://api.deepseek.com"
-)  # Configure for DeepSeek API
+    api_key=API_KEY,
+    base_url=BASE_URL
+)  # Configure OpenAI-compatible API endpoint
 
 # --------------------------------------------------------------------------------
 # 2. Define our schema using Pydantic for type safety
@@ -586,7 +588,7 @@ def stream_openai_response(user_message: str):
     # Remove the old file guessing logic since we'll use function calls
     try:
         stream = client.chat.completions.create(
-            model="deepseek-reasoner",
+            model=MODEL,
             messages=conversation_history,
             tools=tools,
             max_completion_tokens=64000,
@@ -695,7 +697,7 @@ def stream_openai_response(user_message: str):
                 console.print("\n[bold bright_blue]🔄 Processing results...[/bold bright_blue]")
                 
                 follow_up_stream = client.chat.completions.create(
-                    model="deepseek-reasoner",
+                    model=MODEL,
                     messages=conversation_history,
                     tools=tools,
                     max_completion_tokens=64000,
