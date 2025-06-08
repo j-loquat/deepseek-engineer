@@ -62,6 +62,9 @@ class FileToEdit(BaseModel):
 
 # --------------------------------------------------------------------------------
 # 2.1. Define Function Calling Tools
+# This 'tools' definition is primarily for reference (e.g., to keep the system prompt
+# consistent with available functions and their parameters) and for potential future use
+# if native tool calling is supported. It is NOT directly passed to the LLM API anymore.
 # --------------------------------------------------------------------------------
 tools = [
     {
@@ -174,6 +177,9 @@ tools = [
 
 # --------------------------------------------------------------------------------
 # 3. system prompt
+# The system prompt instructs the LLM on how to behave and lists available "functions".
+# Crucially, it now specifies that function calls should be made by outputting a JSON object
+# in a specific format, as native function/tool calling via the API is not used for the target model.
 # --------------------------------------------------------------------------------
 system_PROMPT = dedent("""\
     You are an elite software engineer called DeepSeek Engineer with decades of experience across all programming domains.
@@ -188,6 +194,9 @@ system_PROMPT = dedent("""\
        - Debug issues with precision
 
     2. File Operations (via function calls):
+       To use these functions, output a JSON object in the format:
+       `{"function_call": {"name": "function_name", "arguments": {"arg1": "value1"}}}`.
+       Available functions:
        - read_file: Read a single file's content
        - read_multiple_files: Read multiple files at once
        - create_file: Create or overwrite a single file
@@ -196,8 +205,9 @@ system_PROMPT = dedent("""\
 
     Guidelines:
     1. Provide natural, conversational responses explaining your reasoning
-    2. Use function calls when you need to read or modify files
-    3. For file operations:
+    2. When you need to call a function, output a JSON object in the following format: `{"function_call": {"name": "function_name", "arguments": {"arg1": "value1"}}}`.
+    3. Use the available functions for file operations.
+    4. For file operations:
        - Always read files first before editing them to understand the context
        - Use precise snippet matching for edits
        - Explain what changes you're making and why
@@ -206,7 +216,7 @@ system_PROMPT = dedent("""\
     5. Suggest tests or validation steps when appropriate
     6. Be thorough in your analysis and recommendations
 
-    IMPORTANT: In your thinking process, if you realize that something requires a tool call, cut your thinking short and proceed directly to the tool call. Don't overthink - act efficiently when file operations are needed.
+    IMPORTANT: In your thinking process, if you realize that something requires a tool call, output the JSON for the function call immediately. Don't overthink - act efficiently when file operations are needed.
 
     Remember: You're a senior engineer - be thoughtful, precise, and explain your reasoning clearly.
 """)
@@ -593,12 +603,13 @@ def stream_openai_response(user_message: str):
     # Trim conversation history if it's getting too long
     trim_conversation_history()
 
-    # Remove the old file guessing logic since we'll use function calls
+    # Note: The `tools` parameter is NOT passed to the client.chat.completions.create() call.
+    # Function calling is handled by parsing the LLM's text response for a JSON structure.
     try:
         stream = client.chat.completions.create(
             model=MODEL,
             messages=conversation_history,
-            tools=tools,
+            # tools=tools, # Removed as native tool calling is not used.
             max_completion_tokens=64000,
             stream=True
         )
@@ -624,122 +635,144 @@ def stream_openai_response(user_message: str):
                     reasoning_started = False
                 final_content += chunk.choices[0].delta.content
                 console.print(chunk.choices[0].delta.content, end="")
-            elif chunk.choices[0].delta.tool_calls:
-                # Handle tool calls
-                for tool_call_delta in chunk.choices[0].delta.tool_calls:
-                    if tool_call_delta.index is not None:
-                        # Ensure we have enough tool_calls
-                        while len(tool_calls) <= tool_call_delta.index:
-                            tool_calls.append({
-                                "id": "",
-                                "type": "function",
-                                "function": {"name": "", "arguments": ""}
-                            })
+            # elif chunk.choices[0].delta.tool_calls: # THIS BLOCK IS DISABLED
+                # This is the standard OpenAI tool_calls handling. It's disabled because
+                # the target API (Chutes.AI) might not support it or has issues.
+                # Instead, we parse final_content for a JSON structure.
+            #     for tool_call_delta in chunk.choices[0].delta.tool_calls:
+            #         if tool_call_delta.index is not None:
+            #             while len(tool_calls) <= tool_call_delta.index:
+            #                 tool_calls.append({
+            #                     "id": "",
+            #                     "type": "function",
+            #                     "function": {"name": "", "arguments": ""}
+            #                 })
                         
-                        if tool_call_delta.id:
-                            tool_calls[tool_call_delta.index]["id"] = tool_call_delta.id
-                        if tool_call_delta.function:
-                            if tool_call_delta.function.name:
-                                tool_calls[tool_call_delta.index]["function"]["name"] += tool_call_delta.function.name
-                            if tool_call_delta.function.arguments:
-                                tool_calls[tool_call_delta.index]["function"]["arguments"] += tool_call_delta.function.arguments
+            #             if tool_call_delta.id:
+            #                 tool_calls[tool_call_delta.index]["id"] = tool_call_delta.id
+            #             if tool_call_delta.function:
+            #                 if tool_call_delta.function.name:
+            #                     tool_calls[tool_call_delta.index]["function"]["name"] += tool_call_delta.function.name
+            #                 if tool_call_delta.function.arguments:
+            #                     tool_calls[tool_call_delta.index]["function"]["arguments"] += tool_call_delta.function.arguments
 
         console.print()  # New line after streaming
 
-        # Store the assistant's response in conversation history
-        assistant_message = {
-            "role": "assistant",
-            "content": final_content if final_content else None
-        }
-        
-        if tool_calls:
-            # Convert our tool_calls format to the expected format
-            formatted_tool_calls = []
-            for i, tc in enumerate(tool_calls):
-                if tc["function"]["name"]:  # Only add if we have a function name
-                    # Ensure we have a valid tool call ID
-                    tool_id = tc["id"] if tc["id"] else f"call_{i}_{int(time.time() * 1000)}"
+        # Attempt to parse final_content as JSON to detect if the LLM wants to call a function.
+        # This is our custom implementation for function calling.
+        try:
+            parsed_json = json.loads(final_content)
+            # Check for the specific "function_call" structure in the JSON.
+            if isinstance(parsed_json, dict) and "function_call" in parsed_json:
+                function_call_data = parsed_json["function_call"]
+                if isinstance(function_call_data, dict) and \
+                   "name" in function_call_data and \
+                   "arguments" in function_call_data:
+
+                    # Extract function name and arguments from the parsed JSON.
+                    function_name = function_call_data["name"]
+                    arguments_dict = function_call_data["arguments"]
                     
-                    formatted_tool_calls.append({
-                        "id": tool_id,
-                        "type": "function",
+                    if not isinstance(arguments_dict, dict):
+                        try:
+                            arguments_dict = json.loads(str(arguments_dict))
+                        except json.JSONDecodeError:
+                            raise ValueError(f"Function call arguments for {function_name} are not valid JSON: {arguments_dict}")
+
+                    # Generate a custom tool_call_id for this JSON-based function call.
+                    tool_call_id = f"json_call_{int(time.time() * 1000)}"
+
+                    # Prepare the tool_call object in the format expected by execute_function_call_dict
+                    # and for storing in conversation history.
+                    tool_call_for_execution = {
+                        "id": tool_call_id,
+                        "type": "function", # Standard type for function calls
                         "function": {
-                            "name": tc["function"]["name"],
-                            "arguments": tc["function"]["arguments"]
+                            "name": function_name,
+                            "arguments": json.dumps(arguments_dict) # execute_function_call_dict expects arguments as a JSON string
                         }
-                    })
-            
-            if formatted_tool_calls:
-                # Important: When there are tool calls, content should be None or empty
-                if not final_content:
-                    assistant_message["content"] = None
+                    }
                     
-                assistant_message["tool_calls"] = formatted_tool_calls
-                conversation_history.append(assistant_message)
-                
-                # Execute tool calls and add results immediately
-                console.print(f"\n[bold bright_cyan]⚡ Executing {len(formatted_tool_calls)} function call(s)...[/bold bright_cyan]")
-                for tool_call in formatted_tool_calls:
-                    console.print(f"[bright_blue]→ {tool_call['function']['name']}[/bright_blue]")
+                    # Append the assistant's "intention" to call a function to history.
+                    # Content is None because the action is a tool call.
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [tool_call_for_execution] # Stored in the same format as native tool_calls
+                    }
+                    conversation_history.append(assistant_message)
+
+                    # Execute the function call.
+                    console.print(f"\n[bold bright_cyan]⚡ Executing JSON function call: {function_name}...[/bold bright_cyan]")
                     
                     try:
-                        result = execute_function_call_dict(tool_call)
-                        
-                        # Add tool result to conversation immediately
-                        tool_response = {
-                            "role": "tool",
-                            "tool_call_id": tool_call["id"],
-                            "content": result
-                        }
-                        conversation_history.append(tool_response)
+                        result = execute_function_call_dict(tool_call_for_execution)
                     except Exception as e:
-                        console.print(f"[red]Error executing {tool_call['function']['name']}: {e}[/red]")
-                        # Still need to add a tool response even on error
-                        conversation_history.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call["id"],
-                            "content": f"Error: {str(e)}"
-                        })
-                
-                # Get follow-up response after tool execution
-                console.print("\n[bold bright_blue]🔄 Processing results...[/bold bright_blue]")
-                
-                follow_up_stream = client.chat.completions.create(
-                    model=MODEL,
-                    messages=conversation_history,
-                    tools=tools,
-                    max_completion_tokens=64000,
-                    stream=True
-                )
-                
-                follow_up_content = ""
-                reasoning_started = False
-                
-                for chunk in follow_up_stream:
-                    # Handle reasoning content if available
-                    if hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content:
-                        if not reasoning_started:
-                            console.print("\n[bold blue]💭 Reasoning:[/bold blue]")
-                            reasoning_started = True
-                        console.print(chunk.choices[0].delta.reasoning_content, end="")
-                    elif chunk.choices[0].delta.content:
-                        if reasoning_started:
-                            console.print("\n")
-                            console.print("\n[bold bright_blue]🤖 Assistant>[/bold bright_blue] ", end="")
-                            reasoning_started = False
-                        follow_up_content += chunk.choices[0].delta.content
-                        console.print(chunk.choices[0].delta.content, end="")
-                
-                console.print()
-                
-                # Store follow-up response
-                conversation_history.append({
-                    "role": "assistant",
-                    "content": follow_up_content
-                })
-        else:
-            # No tool calls, just store the regular response
+                        console.print(f"[red]Error executing {function_name} from JSON: {e}[/red]")
+                        result = f"Error: {str(e)}" # Provide an error message as result
+
+                    # Append the result of the function call to history.
+                    tool_response = {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id, # Correlate with the assistant's request
+                        "content": result
+                    }
+                    conversation_history.append(tool_response)
+
+                    # Get follow-up response from the LLM after tool execution.
+                    console.print("\n[bold bright_blue]🔄 Processing results of JSON function call...[/bold bright_blue]")
+
+                    follow_up_stream = client.chat.completions.create(
+                        model=MODEL,
+                        messages=conversation_history,
+                        # tools=tools, # Removed as native tool calling is not used for this model.
+                        max_completion_tokens=64000,
+                        stream=True
+                    )
+
+                    follow_up_content = ""
+                    follow_up_reasoning_started = False
+
+                    for chunk_follow_up in follow_up_stream:
+                        if hasattr(chunk_follow_up.choices[0].delta, 'reasoning_content') and chunk_follow_up.choices[0].delta.reasoning_content:
+                            if not follow_up_reasoning_started:
+                                console.print("\n[bold blue]💭 Reasoning (follow-up):[/bold blue]")
+                                follow_up_reasoning_started = True
+                            console.print(chunk_follow_up.choices[0].delta.reasoning_content, end="")
+                        elif chunk_follow_up.choices[0].delta.content:
+                            if follow_up_reasoning_started:
+                                console.print("\n")
+                                console.print("\n[bold bright_blue]🤖 Assistant (follow-up)>[/bold bright_blue] ", end="")
+                                follow_up_reasoning_started = False
+                            follow_up_content += chunk_follow_up.choices[0].delta.content
+                            console.print(chunk_follow_up.choices[0].delta.content, end="")
+
+                    console.print()
+
+                    conversation_history.append({
+                        "role": "assistant",
+                        "content": follow_up_content
+                    })
+
+                else:
+                    # Valid JSON, but not the function call structure we expect
+                    # Or, the function call structure was invalid.
+                    assistant_message = {"role": "assistant", "content": final_content}
+                    conversation_history.append(assistant_message)
+            else:
+                # Valid JSON, but not a function_call command
+                assistant_message = {"role": "assistant", "content": final_content}
+                conversation_history.append(assistant_message)
+        except json.JSONDecodeError:
+            # Not JSON, treat as a regular text response
+            assistant_message = {"role": "assistant", "content": final_content}
             conversation_history.append(assistant_message)
+        except ValueError as ve: # Catch specific errors like argument parsing
+            console.print(f"[bold red]✗ Error processing JSON function call: {ve}[/bold red]")
+            # Fallback to treating as a regular message or error message
+            assistant_message = {"role": "assistant", "content": f"Error processing function call: {final_content}"}
+            conversation_history.append(assistant_message)
+
 
         return {"success": True}
 
